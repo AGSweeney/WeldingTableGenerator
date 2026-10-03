@@ -1,0 +1,8 @@
+generator/build/
+installer/output/
+generator/.qt-path
+
+.vs/
+*.user
+*.suo
+CMakeUserPresets.json

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="12" fill="#2b2b2b"/>
+  <polygon points="13,36 17.2,36 17.2,54 13,54" fill="#3d6b3d"/>
+  <polygon points="17.2,36 18.8,34.9 18.8,52.9 17.2,54" fill="#2a4e2a"/>
+  <polygon points="46,36 50.2,36 50.2,54 46,54" fill="#3d6b3d"/>
+  <polygon points="50.2,36 51.8,34.9 51.8,52.9 50.2,54" fill="#2a4e2a"/>
+  <polygon points="15,49 32,56 32,58.4 15,51.4" fill="#5c6e7a"/>
+  <polygon points="32,56 49,49 49,51.4 32,58.4" fill="#4e606c"/>
+  <polygon points="30,42 34.4,42 34.4,58 30,58" fill="#3d6b3d"/>
+  <polygon points="34.4,42 36,40.9 36,56.9 34.4,58" fill="#2a4e2a"/>
+  <polygon points="12,26 32,36 32,45 12,35" fill="#b7c4ce"/>
+  <polygon points="32,36 52,26 52,35 32,45" fill="#8fa0ab"/>
+  <polygon points="12,22 32,12 52,22 32,32" fill="#f7f8f8"/>
+  <polygon points="12,22 32,32 32,36 12,26" fill="#d5dbe0"/>
+  <polygon points="32,32 52,22 52,26 32,36" fill="#c5ced6"/>
+  <circle cx="24" cy="20" r="1.15" fill="#2a5a8a"/>
+  <circle cx="32" cy="16.5" r="1.15" fill="#2a5a8a"/>
+  <circle cx="40" cy="20" r="1.15" fill="#2a5a8a"/>
+  <circle cx="27" cy="24" r="1.15" fill="#2a5a8a"/>
+  <circle cx="37" cy="24" r="1.15" fill="#2a5a8a"/>
+  <circle cx="32" cy="22" r="1.15" fill="#2a5a8a"/>
+</svg>
