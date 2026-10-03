@@ -1,5 +1,4 @@
 generator/build/
-installer/output/
 generator/.qt-path
 
 .vs/
