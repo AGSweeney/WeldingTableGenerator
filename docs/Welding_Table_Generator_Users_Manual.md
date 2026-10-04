@@ -19,7 +19,7 @@ The window has four regions.
 
 The summary for the starting table reads:
 
-`24.000 x 116.000 in · 174 holes · 76 slots · 2 long ribs · 10 cross ribs · nest fits · 560.6 lb`
+`24.000 x 116.000 in · 174 holes · 78 slots · 2 long ribs · 10 cross ribs · nest fits · 560.6 lb`
 
 That weight is the plate, apron, rib, and foot-plate steel. Tube, welds, and the fit coupons are not in it. If a value cannot be built, the summary turns red and the status line says why.
 
@@ -69,7 +69,7 @@ Dog holes are drilled through the top on a rectangular grid, and the same diamet
 | Margin Y | 2 in | Inset of the first and last hole from the front and back edges. |
 | Square grid | on | Y pitch and Y margin follow X. Turn it off to set them separately. |
 
-Switching **mm** to **in** converts the number you already have. 16 mm becomes 0.6299 in. A 5/8 in dog is 0.625 in. Switching back to mm converts the other way, so the hole does not jump unless you type a new number. The plan caption shows both units, with the unit you are editing first. On the starting table that caption is `174 holes  76 slots  16.000 mm (0.6299 in) dog holes`.
+Switching **mm** to **in** converts the number you already have. 16 mm becomes 0.6299 in. A 5/8 in dog is 0.625 in. Switching back to mm converts the other way, so the hole does not jump unless you type a new number. The plan caption shows both units, with the unit you are editing first. On the starting table that caption is `174 holes  78 slots  16.000 mm (0.6299 in) dog holes`.
 
 Pitch and margins stay in inches. The rest of the table is laid out in inches.
 

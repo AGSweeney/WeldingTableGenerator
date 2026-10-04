@@ -837,6 +837,17 @@ void paintTable(QPainter& painter, const QRectF& port, const TableModel& model, 
                       .arg(model.topSlotCount())
                       .arg(model.dogHoleLabel()),
                   pal.muted, 13, Qt::AlignHCenter);
+        if (!model.tabHoleHits().empty()) {
+            const QColor warn(176, 32, 32);
+            painter.setPen(cosmetic(warn, 2.4));
+            painter.setBrush(QColor(176, 32, 32, 80));
+            for (const SlotFeat& hit : model.tabHoleHits()) {
+                painter.drawRect(QRectF(QPointF(hit.x0, hit.y0), QPointF(hit.x1, hit.y1)));
+            }
+            drawLabel(painter, QPointF(spec.length * 0.5, spec.width + 6.2),
+                      QStringLiteral("Apron tab cuts a dog hole (%1)").arg(model.tabHoleHits().size()), warn, 14,
+                      Qt::AlignHCenter);
+        }
     } else if (view == TableView::Nest) {
         painter.setBrush(dark ? QColor(28, 34, 44) : QColor(250, 250, 250));
         painter.setPen(cosmetic(pal.edge, 1.4));

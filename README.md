@@ -84,7 +84,7 @@ Compile it with Inno Setup 6 after a Release build:
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ".\installer\WeldingTableGenerator.iss"
 ```
 
-The setup program is `installer\output\WeldingTableGenerator-1.0.1-Setup.exe`. It installs to `C:\Program Files\Welding Table Generator`. Generated packages go to the user's Documents folder, not under Program Files.
+The setup program is `installer\output\WeldingTableGenerator-1.0.2-Setup.exe`. It installs to `C:\Program Files\Welding Table Generator`. Generated packages go to the user's Documents folder, not under Program Files.
 
 `Libdxfrw` in the script defaults to `D:\ANest\third_party\libdxfrw`. `CrtDir` defaults to the Visual Studio 2022 VC++ redistributable folder used on this machine. Pass `/DLibdxfrw=...` or `/DCrtDir=...` to `ISCC.exe` if those paths differ.
 

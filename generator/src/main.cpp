@@ -79,7 +79,12 @@ int selfCheck() {
     const Part* p4 = model.find(QStringLiteral("P04"));
     const Part* p5 = model.find(QStringLiteral("P05"));
     expect(model.topHoleCount() == 174, QStringLiteral("holes %1").arg(model.topHoleCount()));
-    expect(model.topSlotCount() == 76, QStringLiteral("slots %1").arg(model.topSlotCount()));
+    expect(model.topSlotCount() == 78, QStringLiteral("slots %1").arg(model.topSlotCount()));
+    expect(model.tabHoleHits().empty(), QStringLiteral("revA tab hits %1").arg(model.tabHoleHits().size()));
+    expect(model.apronTabX().size() == model.crossX().size() + 1,
+           QStringLiteral("apron tabs X %1").arg(model.apronTabX().size()));
+    expect(model.apronTabY().size() == model.longY().size() + 1,
+           QStringLiteral("apron tabs Y %1").arg(model.apronTabY().size()));
     expect(model.longRibCount() == 2, QStringLiteral("long ribs %1").arg(model.longRibCount()));
     expect(model.crossRibCount() == 10, QStringLiteral("cross ribs %1").arg(model.crossRibCount()));
     expect(p2 && std::abs(p2->bounds.width() - 115.0) < 1e-6, QStringLiteral("P02 width"));
@@ -120,6 +125,128 @@ int selfCheck() {
     for (const TubeNest& nest : model.tubeNests()) {
         const bool stockOk = std::abs(nest.stockFeet - 20.0) < 1e-6 || std::abs(nest.stockFeet - 24.0) < 1e-6;
         expect(stockOk && !nest.sticks.empty(), QStringLiteral("tube stock %1 ft").arg(nest.stockFeet));
+    }
+    auto expectTabs = [&](TableSpec spec, int tabCount, bool acrossWidth, const QString& label) {
+        TableModel sized;
+        const bool built = sized.rebuild(spec);
+        const std::vector<double>& tabs = acrossWidth ? sized.tabY() : sized.tabX();
+        const std::vector<double>& ribs = acrossWidth ? sized.longY() : sized.crossX();
+        bool shared = false;
+        for (double tab : tabs) {
+            for (double rib : ribs) {
+                if (std::abs(tab - rib) < 1e-6) {
+                    shared = true;
+                }
+            }
+        }
+        bool spaced = true;
+        const double minGap = spec.tabWidth + spec.slotExtra;
+        for (size_t i = 1; i < tabs.size(); ++i) {
+            if (tabs[i] - tabs[i - 1] < minGap - 1e-4) {
+                spaced = false;
+            }
+        }
+        const bool pass = built && sized.errors().isEmpty() && static_cast<int>(tabs.size()) == tabCount && !shared && spaced;
+        if (!pass) {
+            ok = false;
+            QStringList tabText;
+            QStringList ribText;
+            for (double v : tabs) {
+                tabText << QString::number(v, 'f', 3);
+            }
+            for (double v : ribs) {
+                ribText << QString::number(v, 'f', 3);
+            }
+            out << "FAIL " << label << " tabs " << tabs.size() << " expected " << tabCount << "\n";
+            out << "tabs " << tabText.join(QStringLiteral(", ")) << "\n";
+            out << "ribs " << ribText.join(QStringLiteral(", ")) << "\n";
+            if (!sized.errors().isEmpty()) {
+                out << sized.errors().join(QStringLiteral("\n")) << "\n";
+            }
+        }
+    };
+    TableSpec endTabs = TableSpec::revA();
+    endTabs.holePitchY = 2.0;
+    endTabs.longRibSpacing = 4.0;
+    TableModel endModel;
+    expect(endModel.rebuild(endTabs) && endModel.topHoleCount() == 319,
+           QStringLiteral("dense holes %1").arg(endModel.topHoleCount()));
+    expectTabs(endTabs, 5, true, QStringLiteral("end apron"));
+    TableSpec sideTabs = TableSpec::revA();
+    sideTabs.holePitchX = 2.0;
+    expectTabs(sideTabs, 10, false, QStringLiteral("long rib tabs"));
+    auto sectionsMatch = [&](const std::vector<double>& tabs, const std::vector<double>& ribs, double span) {
+        std::vector<double> edges{0.0};
+        for (double rib : ribs) {
+            if (rib > 1e-4 && rib < span - 1e-4) {
+                edges.push_back(rib);
+            }
+        }
+        edges.push_back(span);
+        if (tabs.size() + 1 != edges.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < tabs.size(); ++i) {
+            const double center = (edges[i] + edges[i + 1]) * 0.5;
+            if (std::abs(tabs[i] - center) > 1e-6) {
+                return false;
+            }
+        }
+        return true;
+    };
+    expect(sectionsMatch(model.apronTabX(), model.crossX(), model.spec().length), QStringLiteral("long apron centers"));
+    expect(sectionsMatch(model.apronTabY(), model.longY(), model.spec().width), QStringLiteral("end apron centers"));
+    expect(sectionsMatch(endModel.apronTabY(), endModel.longY(), endTabs.width), QStringLiteral("dense end centers"));
+    TableSpec clash = TableSpec::revA();
+    clash.holeMarginX = 0.9;
+    clash.holeMarginY = 0.9;
+    TableModel clashModel;
+    expect(clashModel.rebuild(clash) && !clashModel.tabHoleHits().empty() &&
+               clashModel.errors().join(QStringLiteral(" ")).contains(QStringLiteral("cuts a dog hole")),
+           QStringLiteral("apron tab hole warning %1").arg(clashModel.tabHoleHits().size()));
+    const double widths[] = {18, 20, 24, 30, 36, 48};
+    const double lengths[] = {48, 72, 96, 116, 144};
+    const double pitches[] = {2.0, 4.0};
+    const double spacings[] = {4.0, 8.0, 12.0};
+    for (double width : widths) {
+        for (double length : lengths) {
+            for (double pitch : pitches) {
+                for (double spacing : spacings) {
+                    TableSpec spec = TableSpec::revA();
+                    spec.width = width;
+                    spec.length = length;
+                    spec.holePitchX = pitch;
+                    spec.holePitchY = pitch;
+                    spec.crossRibSpacing = spacing;
+                    spec.longRibSpacing = spacing;
+                    TableModel sized;
+                    if (!sized.rebuild(spec)) {
+                        continue;
+                    }
+                    auto shared = [](const std::vector<double>& a, const std::vector<double>& b) {
+                        for (double u : a) {
+                            for (double v : b) {
+                                if (std::abs(u - v) < 1e-6) {
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                    };
+                    const QString trouble = sized.errors().join(QStringLiteral("\n"));
+                    const bool tabTrouble = trouble.contains(QStringLiteral("tab")) || trouble.contains(QStringLiteral("slot"));
+                    const bool bad = shared(sized.tabX(), sized.crossX()) || shared(sized.tabY(), sized.longY()) || tabTrouble;
+                    if (bad) {
+                        ok = false;
+                        out << "FAIL size " << length << " x " << width << " pitch " << pitch << " spacing " << spacing
+                            << "\n";
+                        if (!trouble.isEmpty()) {
+                            out << trouble << "\n";
+                        }
+                    }
+                }
+            }
+        }
     }
     if (!model.errors().isEmpty()) {
         out << model.errors().join(QStringLiteral("\n")) << "\n";

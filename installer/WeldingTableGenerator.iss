@@ -30,7 +30,7 @@
 #endif
 
 #define MyAppName "Welding Table Generator"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "Adam G. Sweeney"
 #define MyAppExeName "Welding Table Generator.exe"
 #ifndef BuildDir

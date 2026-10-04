@@ -1,4 +1,4 @@
-Welding Table Generator 1.0.1
+Welding Table Generator 1.0.2
 
 The source files in this project are MIT, copyright Adam G. Sweeney
 <AGSweeney@gmail.com>. See LICENSE.

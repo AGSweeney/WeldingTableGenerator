@@ -276,8 +276,10 @@ void writePdf(const TableModel& model, const QString& path, const QString& versi
     coords << QStringLiteral("Datum: X from the left end, Y from the front edge. Web depth is down from the top underside.");
     coords << QStringLiteral("Hole X: %1").arg(listOf(model.holeX()));
     coords << QStringLiteral("Hole Y: %1").arg(listOf(model.holeY()));
-    coords << QStringLiteral("Top-slot X: %1").arg(listOf(model.tabX()));
-    coords << QStringLiteral("Top-slot Y: %1").arg(listOf(model.tabY()));
+    coords << QStringLiteral("Apron-tab X: %1").arg(listOf(model.apronTabX()));
+    coords << QStringLiteral("Apron-tab Y: %1").arg(listOf(model.apronTabY()));
+    coords << QStringLiteral("Rib-tab X: %1").arg(listOf(model.tabX()));
+    coords << QStringLiteral("Rib-tab Y: %1").arg(listOf(model.tabY()));
     coords << QStringLiteral("Cross rib X: %1").arg(listOf(model.crossX()));
     coords << QStringLiteral("Long rib Y: %1").arg(listOf(model.longY()));
     coords << QStringLiteral("Long aprons run X %1 to %2. End aprons run Y %3 to %4.")

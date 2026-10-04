@@ -23,4 +23,4 @@
 
 #pragma once
 
-inline constexpr char kAppVersion[] = "1.0.1";
+inline constexpr char kAppVersion[] = "1.0.2";

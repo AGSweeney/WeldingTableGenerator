@@ -187,6 +187,9 @@ public:
     const std::vector<double>& holeY() const { return m_holeY; }
     const std::vector<double>& tabX() const { return m_tabX; }
     const std::vector<double>& tabY() const { return m_tabY; }
+    const std::vector<double>& apronTabX() const { return m_apronTabX; }
+    const std::vector<double>& apronTabY() const { return m_apronTabY; }
+    const std::vector<SlotFeat>& tabHoleHits() const { return m_tabHoleHits; }
     const std::vector<double>& crossX() const { return m_crossX; }
     const std::vector<double>& longY() const { return m_longY; }
 
@@ -239,6 +242,9 @@ private:
     std::vector<double> m_holeY;
     std::vector<double> m_tabX;
     std::vector<double> m_tabY;
+    std::vector<double> m_apronTabX;
+    std::vector<double> m_apronTabY;
+    std::vector<SlotFeat> m_tabHoleHits;
     std::vector<double> m_crossX;
     std::vector<double> m_longY;
     std::vector<Placement> m_nest;

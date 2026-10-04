@@ -132,6 +132,26 @@ int midlineStep(double spacing, double pitch) {
     return std::max(2, static_cast<int>(std::lround(spacing / pitch)));
 }
 
+std::vector<double> apronSectionCenters(double span, const std::vector<double>& ribs) {
+    std::vector<double> edges;
+    edges.push_back(0.0);
+    for (double rib : ribs) {
+        if (rib > 1e-4 && rib < span - 1e-4) {
+            edges.push_back(rib);
+        }
+    }
+    edges.push_back(span);
+    std::sort(edges.begin(), edges.end());
+    edges.erase(std::unique(edges.begin(), edges.end(), [](double a, double b) { return std::abs(a - b) < 1e-6; }),
+                edges.end());
+    std::vector<double> centers;
+    centers.reserve(edges.size());
+    for (size_t i = 1; i < edges.size(); ++i) {
+        centers.push_back((edges[i - 1] + edges[i]) * 0.5);
+    }
+    return centers;
+}
+
 void tabStations(const std::vector<double>& mids, double spacing, double pitch, std::vector<double>& tabs) {
     tabs.clear();
     if (mids.empty()) {
@@ -212,17 +232,106 @@ void centeredRibs(const std::vector<double>& mids, double span, double spacing, 
     ribs.erase(std::unique(ribs.begin(), ribs.end(), [](double a, double b) { return std::abs(a - b) < 1e-6; }), ribs.end());
 }
 
-void dropSharedStations(std::vector<double>& tabs, const std::vector<double>& ribs) {
-    tabs.erase(std::remove_if(tabs.begin(), tabs.end(),
-                              [&](double t) {
-                                  for (double r : ribs) {
-                                      if (std::abs(t - r) < 1e-6) {
-                                          return true;
-                                      }
-                                  }
-                                  return false;
-                              }),
-               tabs.end());
+// A rib and a tab cannot share one hole gap. The rib mirrored from the far end
+// often lands on a tab, and deleting that tab leaves one end of the apron and
+// the ribs without a tab. Move the tab into the nearest free gap instead.
+void keepTabStations(const std::vector<double>& mids, std::vector<double>& tabs, std::vector<double>& ribs, double minSep,
+                     double minRibGap, double low, double high, QStringList& errors, const QString& axis) {
+    if (tabs.empty() || mids.empty()) {
+        return;
+    }
+    const double center = (mids.front() + mids.back()) * 0.5;
+    const int nTabs = static_cast<int>(tabs.size());
+    const int nMids = static_cast<int>(mids.size());
+    std::vector<int> order(static_cast<size_t>(nTabs));
+    for (int i = 0; i < nTabs; ++i) {
+        order[static_cast<size_t>(i)] = i;
+    }
+    std::sort(order.begin(), order.end(), [&](int a, int b) {
+        return std::abs(tabs[static_cast<size_t>(a)] - center) > std::abs(tabs[static_cast<size_t>(b)] - center);
+    });
+    auto sharesRib = [&](double v) {
+        for (double r : ribs) {
+            if (std::abs(v - r) < 1e-6) {
+                return true;
+            }
+        }
+        return false;
+    };
+    std::vector<char> drop(static_cast<size_t>(nTabs), 0);
+    auto tooClose = [&](double v, int self) {
+        for (double r : ribs) {
+            if (std::abs(v - r) < minRibGap) {
+                return true;
+            }
+        }
+        for (int i = 0; i < nTabs; ++i) {
+            if (i == self || drop[static_cast<size_t>(i)]) {
+                continue;
+            }
+            if (std::abs(tabs[static_cast<size_t>(i)] - v) < minSep) {
+                return true;
+            }
+        }
+        return false;
+    };
+    for (int ti : order) {
+        if (!sharesRib(tabs[static_cast<size_t>(ti)])) {
+            continue;
+        }
+        int from = -1;
+        double bestD = 1e300;
+        for (int i = 0; i < nMids; ++i) {
+            const double d = std::abs(mids[static_cast<size_t>(i)] - tabs[static_cast<size_t>(ti)]);
+            if (d < bestD) {
+                bestD = d;
+                from = i;
+            }
+        }
+        if (bestD > 1e-4) {
+            from = -1;
+        }
+        const bool preferHigh = tabs[static_cast<size_t>(ti)] >= center;
+        int chosen = -1;
+        for (int dist = 1; from >= 0 && dist < nMids && chosen < 0; ++dist) {
+            const int candidates[2] = {preferHigh ? from + dist : from - dist, preferHigh ? from - dist : from + dist};
+            for (int j : candidates) {
+                if (j < 0 || j >= nMids) {
+                    continue;
+                }
+                const double v = mids[static_cast<size_t>(j)];
+                if (v < low - 1e-6 || v > high + 1e-6 || tooClose(v, ti)) {
+                    continue;
+                }
+                chosen = j;
+                break;
+            }
+        }
+        if (chosen >= 0) {
+            tabs[static_cast<size_t>(ti)] = mids[static_cast<size_t>(chosen)];
+        } else {
+            const double at = tabs[static_cast<size_t>(ti)];
+            const auto before = ribs.size();
+            ribs.erase(std::remove_if(ribs.begin(), ribs.end(),
+                                      [at](double r) { return std::abs(r - at) < 1e-6; }),
+                       ribs.end());
+            if (ribs.size() == before) {
+                drop[static_cast<size_t>(ti)] = 1;
+                errors << QStringLiteral("A %1 tab at %2 in shares a hole gap with a rib, and no other gap can take it.")
+                              .arg(axis, QString::number(at, 'f', 3));
+            }
+        }
+    }
+    std::vector<double> kept;
+    kept.reserve(tabs.size());
+    for (int i = 0; i < nTabs; ++i) {
+        if (!drop[static_cast<size_t>(i)]) {
+            kept.push_back(tabs[static_cast<size_t>(i)]);
+        }
+    }
+    std::sort(kept.begin(), kept.end());
+    kept.erase(std::unique(kept.begin(), kept.end(), [](double a, double b) { return std::abs(a - b) < 1e-6; }), kept.end());
+    tabs.swap(kept);
 }
 
 void noteRibLayout(const std::vector<double>& ribs, const QString& name, QStringList& warnings) {
@@ -896,6 +1005,9 @@ bool TableModel::rebuild(const TableSpec& spec) {
     m_assemblyWeight = 0;
     m_lighteningSaved = 0;
     m_clampBlocked = 0;
+    m_apronTabX.clear();
+    m_apronTabY.clear();
+    m_tabHoleHits.clear();
 
     auto need = [&](bool ok, const QString& msg) {
         if (!ok) {
@@ -957,8 +1069,16 @@ bool TableModel::rebuild(const TableSpec& spec) {
     tabStations(midsY, spec.longRibSpacing, spec.holePitchY, m_tabY);
     centeredRibs(midsX, spec.length, spec.crossRibSpacing, spec.holePitchX, m_crossX);
     centeredRibs(midsY, spec.width, spec.longRibSpacing, spec.holePitchY, m_longY);
-    dropSharedStations(m_tabX, m_crossX);
-    dropSharedStations(m_tabY, m_longY);
+    const double apronInner = spec.apronInset + spec.webThickness;
+    const double minSep = slTop;
+    const double minRibGap = slTop * 0.5 + sw * 0.5;
+    keepTabStations(midsX, m_tabX, m_crossX, minSep, minRibGap, apronInner + spec.ribEndGap + halfTab,
+                    spec.length - spec.apronInset - spec.webThickness - spec.ribEndGap - halfTab, m_errors,
+                    QStringLiteral("length"));
+    keepTabStations(midsY, m_tabY, m_longY, minSep, minRibGap, apronInner + spec.ribEndGap + halfTab,
+                    spec.width - apronInner - spec.ribEndGap - halfTab, m_errors, QStringLiteral("width"));
+    m_apronTabX = apronSectionCenters(spec.length, m_crossX);
+    m_apronTabY = apronSectionCenters(spec.width, m_longY);
     if (m_tabX.empty() || m_tabY.empty()) {
         m_errors << QStringLiteral("Not enough hole rows to place tab slots between holes. Add margin room or reduce pitch.");
     }
@@ -1060,14 +1180,6 @@ bool TableModel::rebuild(const TableSpec& spec) {
         const double apronY1 = spec.width - A0 - spec.webThickness * 0.5;
         const double apronX0 = A0 + spec.webThickness * 0.5;
         const double apronX1 = spec.length - A0 - spec.webThickness * 0.5;
-        std::vector<double> slotY = m_longY;
-        std::vector<double> slotX = m_crossX;
-        if (spec.apronTopSlots) {
-            slotY.insert(slotY.begin(), apronY1);
-            slotY.insert(slotY.begin(), apronY0);
-            slotX.insert(slotX.begin(), apronX1);
-            slotX.insert(slotX.begin(), apronX0);
-        }
         auto placeSlot = [&](const SlotFeat& s) {
             const bool outL = s.x0 < -1e-6;
             const bool outR = s.x1 > spec.length + 1e-6;
@@ -1105,15 +1217,48 @@ bool TableModel::rebuild(const TableSpec& spec) {
                                        QString::number((s.y0 + s.y1) * 0.5, 'f', 3));
             }
         };
-        for (double y : slotY) {
+        auto placeApronSlot = [&](const SlotFeat& s) {
+            placeSlot(s);
+            const double x0 = std::min(s.x0, s.x1);
+            const double x1 = std::max(s.x0, s.x1);
+            const double y0 = std::min(s.y0, s.y1);
+            const double y1 = std::max(s.y0, s.y1);
+            for (const CircleFeat& hole : top.holes) {
+                if (distToBox(hole.x, hole.y, x0, y0, x1, y1) < hole.r - 1e-4) {
+                    m_tabHoleHits.push_back(s);
+                    if (m_tabHoleHits.size() <= 8) {
+                        m_errors << QStringLiteral("Apron tab at X %1 Y %2 cuts a dog hole.")
+                                        .arg(QString::number((s.x0 + s.x1) * 0.5, 'f', 3),
+                                             QString::number((s.y0 + s.y1) * 0.5, 'f', 3));
+                    }
+                    return;
+                }
+            }
+        };
+        if (spec.apronTopSlots) {
+            for (double y : {apronY0, apronY1}) {
+                for (double x : m_apronTabX) {
+                    placeApronSlot(SlotFeat{x - slTop * 0.5, y - sw * 0.5, x + slTop * 0.5, y + sw * 0.5});
+                }
+            }
+            for (double x : {apronX0, apronX1}) {
+                for (double y : m_apronTabY) {
+                    placeApronSlot(SlotFeat{x - sw * 0.5, y - slTop * 0.5, x + sw * 0.5, y + slTop * 0.5});
+                }
+            }
+        }
+        for (double y : m_longY) {
             for (double x : m_tabX) {
                 placeSlot(SlotFeat{x - slTop * 0.5, y - sw * 0.5, x + slTop * 0.5, y + sw * 0.5});
             }
         }
-        for (double x : slotX) {
+        for (double x : m_crossX) {
             for (double y : m_tabY) {
                 placeSlot(SlotFeat{x - sw * 0.5, y - slTop * 0.5, x + sw * 0.5, y + slTop * 0.5});
             }
+        }
+        if (m_tabHoleHits.size() > 8) {
+            m_errors << QStringLiteral("%1 more apron tabs cut a dog hole.").arg(m_tabHoleHits.size() - 8);
         }
         top.outer = plateWithNotches(spec.length, spec.width, notches);
         finishPart(top, spec.density);
@@ -1138,7 +1283,7 @@ bool TableModel::rebuild(const TableSpec& spec) {
     const auto holeDepths = apronHoleDepths();
 
     const auto p2Tabs = spec.apronTopSlots
-                            ? fitStations(m_tabX, A0, m_longApronLen, halfTab, QStringLiteral("Long apron tab"), m_errors)
+                            ? fitStations(m_apronTabX, A0, m_longApronLen, halfTab, QStringLiteral("Long apron tab"), m_errors)
                             : std::vector<double>{};
     const auto p2Laps = fitStations(m_crossX, A0, m_longApronLen, halfLap, QStringLiteral("Long apron receiver"), m_errors);
     std::vector<CircleFeat> p2Holes;
@@ -1158,7 +1303,7 @@ bool TableModel::rebuild(const TableSpec& spec) {
             p2Slots, {});
 
     const auto p3Tabs = spec.apronTopSlots
-                            ? fitStations(m_tabY, m_apronInner, m_endApronLen, halfTab, QStringLiteral("End apron tab"), m_errors)
+                            ? fitStations(m_apronTabY, m_apronInner, m_endApronLen, halfTab, QStringLiteral("End apron tab"), m_errors)
                             : std::vector<double>{};
     const auto p3Laps = fitStations(m_longY, m_apronInner, m_endApronLen, halfLap, QStringLiteral("End apron receiver"), m_errors);
     std::vector<CircleFeat> p3Holes;
@@ -1279,7 +1424,7 @@ bool TableModel::rebuild(const TableSpec& spec) {
         const double apronX1 = spec.length - A0 - spec.webThickness * 0.5;
         if (spec.apronTopSlots) {
             for (double y : std::vector<double>{apronY0, apronY1}) {
-                for (double x : m_tabX) {
+                for (double x : m_apronTabX) {
                     cover(x, y, true);
                 }
             }
@@ -1291,7 +1436,7 @@ bool TableModel::rebuild(const TableSpec& spec) {
         }
         if (spec.apronTopSlots) {
             for (double x : std::vector<double>{apronX0, apronX1}) {
-                for (double y : m_tabY) {
+                for (double y : m_apronTabY) {
                     cover(x, y, false);
                 }
             }
