@@ -208,6 +208,7 @@ public:
     double apronSlotLength() const;
     double holeDiameterIn() const;
     QString dogHoleLabel() const;
+    int clampBlockedHoles() const { return m_clampBlocked; }
 
     double longApronLength() const { return m_longApronLen; }
     double endApronLength() const { return m_endApronLen; }
@@ -259,4 +260,5 @@ private:
     double m_railLength = 0;
     double m_crossLength = 0;
     double m_frameOuterW = 0;
+    int m_clampBlocked = 0;
 };

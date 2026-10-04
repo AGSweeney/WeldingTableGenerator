@@ -1,0 +1,21 @@
+Welding Table Generator 1.0.1
+
+The source files in this project are MIT, copyright Adam G. Sweeney
+<AGSweeney@gmail.com>. See LICENSE.
+
+This installer distributes an executable that is statically linked with
+libdxfrw. libdxfrw is licensed under the GNU General Public License,
+version 2 or any later version. The combined executable is therefore
+distributed under GPL-2.0-or-later. Being free of charge does not change
+that.
+
+You can rebuild the executable from the corresponding source installed
+with the program:
+
+  source\generator     application source, CMake project, and build.ps1
+  third-party\libdxfrw libdxfrw source and the GPL text (COPYING)
+  README.md            build instructions
+
+The GPL text for libdxfrw is third-party\libdxfrw\COPYING.
+Qt is included as separate DLLs under the LGPL-3.0. VTK is BSD-3-Clause.
+Those terms are in THIRD_PARTY_NOTICES.txt.

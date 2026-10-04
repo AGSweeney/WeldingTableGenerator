@@ -705,6 +705,181 @@ QString TableModel::summary() const {
         .arg(nest, QString::number(m_assemblyWeight, 'f', 1));
 }
 
+namespace {
+
+double distToSegment(double x, double y, const QPointF& a, const QPointF& b) {
+    const double dx = b.x() - a.x();
+    const double dy = b.y() - a.y();
+    const double len2 = dx * dx + dy * dy;
+    double t = 0;
+    if (len2 > 1e-18) {
+        t = std::clamp(((x - a.x()) * dx + (y - a.y()) * dy) / len2, 0.0, 1.0);
+    }
+    return std::hypot(x - (a.x() + t * dx), y - (a.y() + t * dy));
+}
+
+bool pointInPolygon(double x, double y, const std::vector<QPointF>& poly) {
+    bool inside = false;
+    const int n = static_cast<int>(poly.size());
+    for (int i = 0, j = n - 1; i < n; j = i++) {
+        const double xi = poly[static_cast<size_t>(i)].x();
+        const double yi = poly[static_cast<size_t>(i)].y();
+        const double xj = poly[static_cast<size_t>(j)].x();
+        const double yj = poly[static_cast<size_t>(j)].y();
+        const bool cross = (yi > y) != (yj > y) && (x < (xj - xi) * (y - yi) / ((yj - yi) + 0.0) + xi);
+        if (cross) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+bool segmentsCross(const QPointF& a, const QPointF& b, const QPointF& c, const QPointF& d) {
+    const auto cross = [](const QPointF& u, const QPointF& v) { return u.x() * v.y() - u.y() * v.x(); };
+    const QPointF r(b.x() - a.x(), b.y() - a.y());
+    const QPointF s(d.x() - c.x(), d.y() - c.y());
+    const double den = cross(r, s);
+    if (std::abs(den) < 1e-12) {
+        return false;
+    }
+    const QPointF ac(c.x() - a.x(), c.y() - a.y());
+    const double t = cross(ac, s) / den;
+    const double u = cross(ac, r) / den;
+    constexpr double eps = 1e-7;
+    return t > eps && t < 1.0 - eps && u > eps && u < 1.0 - eps;
+}
+
+bool contourCrossesItself(const std::vector<QPointF>& pts) {
+    const int n = static_cast<int>(pts.size());
+    if (n < 4) {
+        return false;
+    }
+    for (int i = 0; i < n; ++i) {
+        const QPointF a = pts[static_cast<size_t>(i)];
+        const QPointF b = pts[static_cast<size_t>((i + 1) % n)];
+        for (int j = i + 1; j < n; ++j) {
+            const int gap = std::min(std::abs(j - i), n - std::abs(j - i));
+            if (gap <= 1) {
+                continue;
+            }
+            if (segmentsCross(a, b, pts[static_cast<size_t>(j)], pts[static_cast<size_t>((j + 1) % n)])) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+double distToBox(double x, double y, double x0, double y0, double x1, double y1) {
+    const double dx = x < x0 ? x0 - x : (x > x1 ? x - x1 : 0.0);
+    const double dy = y < y0 ? y0 - y : (y > y1 ? y - y1 : 0.0);
+    return std::hypot(dx, dy);
+}
+
+void noteCutGeometry(const TableSpec& spec, const std::vector<Part>& parts, const std::vector<double>& longY,
+                     const std::vector<double>& crossX, double apronInner, double ribOriginX, double longRibLen,
+                     double ribOriginY, double crossRibLen, QStringList& errors, QStringList& warnings, int& clampBlocked) {
+    constexpr double kClampClearance = 1.0;
+    int extra = 0;
+    auto addError = [&](const QString& message) {
+        if (extra < 8) {
+            errors << message;
+        }
+        ++extra;
+    };
+    for (const Part& part : parts) {
+        if (part.qty < 1) {
+            continue;
+        }
+        if (part.outer.size() >= 4 && contourCrossesItself(part.outer)) {
+            addError(QStringLiteral("%1 outline crosses itself.").arg(part.code));
+        }
+        for (size_t i = 0; i < part.holes.size(); ++i) {
+            const CircleFeat& hole = part.holes[i];
+            if (part.outer.size() >= 3) {
+                const bool inside = pointInPolygon(hole.x, hole.y, part.outer);
+                double edge = 1e9;
+                const int n = static_cast<int>(part.outer.size());
+                for (int k = 0; k < n; ++k) {
+                    edge = std::min(edge, distToSegment(hole.x, hole.y, part.outer[static_cast<size_t>(k)],
+                                                        part.outer[static_cast<size_t>((k + 1) % n)]));
+                }
+                if (!inside || edge < hole.r - 1e-4) {
+                    addError(QStringLiteral("%1 hole at %2, %3 breaks through the edge.")
+                                 .arg(part.code)
+                                 .arg(QString::number(hole.x, 'f', 3), QString::number(hole.y, 'f', 3)));
+                }
+            }
+            for (size_t j = i + 1; j < part.holes.size(); ++j) {
+                const CircleFeat& other = part.holes[j];
+                if (std::hypot(hole.x - other.x, hole.y - other.y) < hole.r + other.r - 1e-4) {
+                    addError(QStringLiteral("%1 holes overlap. Increase pitch or reduce the diameter.").arg(part.code));
+                    break;
+                }
+            }
+            for (const SlotFeat& slot : part.slotCuts) {
+                const double x0 = std::min(slot.x0, slot.x1);
+                const double x1 = std::max(slot.x0, slot.x1);
+                const double y0 = std::min(slot.y0, slot.y1);
+                const double y1 = std::max(slot.y0, slot.y1);
+                if (distToBox(hole.x, hole.y, x0, y0, x1, y1) < hole.r - 1e-4) {
+                    addError(QStringLiteral("%1 hole at %2, %3 intersects a slot.")
+                                 .arg(part.code)
+                                 .arg(QString::number(hole.x, 'f', 3), QString::number(hole.y, 'f', 3)));
+                    break;
+                }
+            }
+        }
+    }
+    if (extra > 8) {
+        errors << QStringLiteral("%1 more geometry problems were found.").arg(extra - 8);
+    }
+
+    const Part* top = nullptr;
+    for (const Part& part : parts) {
+        if (part.code == QLatin1String("P01")) {
+            top = &part;
+            break;
+        }
+    }
+    if (!top) {
+        return;
+    }
+    struct Box {
+        double x0, y0, x1, y1;
+    };
+    std::vector<Box> webs;
+    const double web = spec.webThickness;
+    const double inset = spec.apronInset;
+    webs.push_back({inset, inset, spec.length - inset, inset + web});
+    webs.push_back({inset, spec.width - inset - web, spec.length - inset, spec.width - inset});
+    webs.push_back({inset, apronInner, inset + web, spec.width - apronInner});
+    webs.push_back({spec.length - inset - web, apronInner, spec.length - inset, spec.width - apronInner});
+    for (double y : longY) {
+        webs.push_back({ribOriginX, y - web * 0.5, ribOriginX + longRibLen, y + web * 0.5});
+    }
+    for (double x : crossX) {
+        webs.push_back({x - web * 0.5, ribOriginY, x + web * 0.5, ribOriginY + crossRibLen});
+    }
+    clampBlocked = 0;
+    for (const CircleFeat& hole : top->holes) {
+        for (const Box& box : webs) {
+            if (distToBox(hole.x, hole.y, box.x0, box.y0, box.x1, box.y1) < hole.r + kClampClearance) {
+                ++clampBlocked;
+                break;
+            }
+        }
+    }
+    if (clampBlocked > 0) {
+        warnings << QStringLiteral("%1 dog holes have less than %2 in between the hole edge and a rib or apron. "
+                                   "A clamp can be blocked under a hole that still accepts a pin.")
+                        .arg(clampBlocked)
+                        .arg(QString::number(kClampClearance, 'f', 3));
+    }
+}
+
+}  // namespace
+
 bool TableModel::rebuild(const TableSpec& spec) {
     m_spec = spec;
     m_errors.clear();
@@ -720,6 +895,7 @@ bool TableModel::rebuild(const TableSpec& spec) {
     m_nestOccupied = {};
     m_assemblyWeight = 0;
     m_lighteningSaved = 0;
+    m_clampBlocked = 0;
 
     auto need = [&](bool ok, const QString& msg) {
         if (!ok) {
@@ -775,10 +951,6 @@ bool TableModel::rebuild(const TableSpec& spec) {
         m_errors << QStringLiteral("The hole grid does not fit inside the margins.");
         return false;
     }
-    if (holeR * 2 >= std::min(spec.holePitchX, spec.holePitchY) - 0.05) {
-        m_warnings << QStringLiteral("Holes are close enough to touch. Increase pitch or reduce the diameter.");
-    }
-
     const auto midsX = midlines(m_holeX);
     const auto midsY = midlines(m_holeY);
     tabStations(midsX, spec.crossRibSpacing, spec.holePitchX, m_tabX);
@@ -788,7 +960,7 @@ bool TableModel::rebuild(const TableSpec& spec) {
     dropSharedStations(m_tabX, m_crossX);
     dropSharedStations(m_tabY, m_longY);
     if (m_tabX.empty() || m_tabY.empty()) {
-        m_warnings << QStringLiteral("Not enough hole rows to place tab slots between holes. Add margin room or reduce pitch.");
+        m_errors << QStringLiteral("Not enough hole rows to place tab slots between holes. Add margin room or reduce pitch.");
     }
     noteRibLayout(m_crossX, QStringLiteral("Cross ribs"), m_warnings);
     noteRibLayout(m_longY, QStringLiteral("Long ribs"), m_warnings);
@@ -928,7 +1100,7 @@ bool TableModel::rebuild(const TableSpec& spec) {
             } else if (outside == 1 && outR && s.x0 < spec.length - 1e-4) {
                 notch(1, s.y0, s.y1, spec.length - s.x0);
             } else {
-                m_warnings << QStringLiteral("A top slot at X %1 Y %2 falls off the plate and was skipped.")
+                m_errors << QStringLiteral("A top slot at X %1 Y %2 falls off the plate and was skipped.")
                                   .arg(QString::number((s.x0 + s.x1) * 0.5, 'f', 3),
                                        QString::number((s.y0 + s.y1) * 0.5, 'f', 3));
             }
@@ -959,16 +1131,16 @@ bool TableModel::rebuild(const TableSpec& spec) {
             d.push_back(a);
             d.push_back(b);
         } else {
-            m_warnings << QStringLiteral("Apron hole rows do not fit in the web depth, so those holes were omitted.");
+            m_errors << QStringLiteral("Apron hole rows do not fit in the web depth, so those holes were omitted.");
         }
         return d;
     };
     const auto holeDepths = apronHoleDepths();
 
     const auto p2Tabs = spec.apronTopSlots
-                            ? fitStations(m_tabX, A0, m_longApronLen, halfTab, QStringLiteral("Long apron tab"), m_warnings)
+                            ? fitStations(m_tabX, A0, m_longApronLen, halfTab, QStringLiteral("Long apron tab"), m_errors)
                             : std::vector<double>{};
-    const auto p2Laps = fitStations(m_crossX, A0, m_longApronLen, halfLap, QStringLiteral("Long apron receiver"), m_warnings);
+    const auto p2Laps = fitStations(m_crossX, A0, m_longApronLen, halfLap, QStringLiteral("Long apron receiver"), m_errors);
     std::vector<CircleFeat> p2Holes;
     std::vector<SlotFeat> p2Slots;
     for (double x : m_holeX) {
@@ -986,9 +1158,9 @@ bool TableModel::rebuild(const TableSpec& spec) {
             p2Slots, {});
 
     const auto p3Tabs = spec.apronTopSlots
-                            ? fitStations(m_tabY, m_apronInner, m_endApronLen, halfTab, QStringLiteral("End apron tab"), m_warnings)
+                            ? fitStations(m_tabY, m_apronInner, m_endApronLen, halfTab, QStringLiteral("End apron tab"), m_errors)
                             : std::vector<double>{};
-    const auto p3Laps = fitStations(m_longY, m_apronInner, m_endApronLen, halfLap, QStringLiteral("End apron receiver"), m_warnings);
+    const auto p3Laps = fitStations(m_longY, m_apronInner, m_endApronLen, halfLap, QStringLiteral("End apron receiver"), m_errors);
     std::vector<CircleFeat> p3Holes;
     std::vector<SlotFeat> p3Slots;
     for (double y : m_holeY) {
@@ -1005,8 +1177,8 @@ bool TableModel::rebuild(const TableSpec& spec) {
     makeWeb(QStringLiteral("P03"), QStringLiteral("End apron"), 2, m_endApronLen, false, p3Tabs, {}, false, p3Holes, p3Slots,
             {});
 
-    const auto p4Tabs = fitStations(m_tabX, m_r0, m_longRibLen, halfTab, QStringLiteral("Long rib tab"), m_warnings);
-    const auto p4Laps = fitStations(m_crossX, m_r0, m_longRibLen, halfLap, QStringLiteral("Long rib half-lap"), m_warnings);
+    const auto p4Tabs = fitStations(m_tabX, m_r0, m_longRibLen, halfTab, QStringLiteral("Long rib tab"), m_errors);
+    const auto p4Laps = fitStations(m_crossX, m_r0, m_longRibLen, halfLap, QStringLiteral("Long rib half-lap"), m_errors);
     std::vector<double> p4Edges = {0.0};
     for (double x : p4Laps) {
         p4Edges.push_back(x);
@@ -1016,8 +1188,8 @@ bool TableModel::rebuild(const TableSpec& spec) {
     makeWeb(QStringLiteral("P04"), QStringLiteral("Long stiffener"), 2, m_longRibLen, true, p4Tabs, p4Laps, false, {}, {},
             p4Edges);
 
-    const auto p5Tabs = fitStations(m_tabY, m_c0, m_crossRibLen, halfTab, QStringLiteral("Cross rib tab"), m_warnings);
-    const auto p5Laps = fitStations(m_longY, m_c0, m_crossRibLen, halfLap, QStringLiteral("Cross rib half-lap"), m_warnings);
+    const auto p5Tabs = fitStations(m_tabY, m_c0, m_crossRibLen, halfTab, QStringLiteral("Cross rib tab"), m_errors);
+    const auto p5Laps = fitStations(m_longY, m_c0, m_crossRibLen, halfLap, QStringLiteral("Cross rib half-lap"), m_errors);
     std::vector<double> p5Edges = {0.0};
     for (double y : p5Laps) {
         p5Edges.push_back(y);
@@ -1098,7 +1270,7 @@ bool TableModel::rebuild(const TableSpec& spec) {
                     return;
                 }
             }
-            m_warnings << QStringLiteral("Tab at X %1 Y %2 is not fully inside a top slot.")
+            m_errors << QStringLiteral("Tab at X %1 Y %2 is not fully inside a top slot.")
                               .arg(QString::number(x, 'f', 3), QString::number(y, 'f', 3));
         };
         const double apronY0 = A0 + spec.webThickness * 0.5;
@@ -1453,6 +1625,14 @@ bool TableModel::rebuild(const TableSpec& spec) {
             }
             m_lighteningSaved += cut * p.qty * p.thickness * spec.density;
         }
+    }
+
+    noteCutGeometry(spec, m_parts, m_longY, m_crossX, m_apronInner, m_r0, m_longRibLen, m_c0, m_crossRibLen, m_errors,
+                    m_warnings, m_clampBlocked);
+    if (m_clampBlocked == 0) {
+        m_checks << QStringLiteral("Every dog hole has at least 1.000 in from the hole edge to the nearest rib or apron.");
+    } else {
+        m_checks << QStringLiteral("%1 dog holes need a physical clamp check under the top.").arg(m_clampBlocked);
     }
 
     m_checks << QStringLiteral("%1 top holes, %2 top slots, %3 long ribs, %4 cross ribs.")

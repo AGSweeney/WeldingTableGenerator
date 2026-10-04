@@ -8,7 +8,9 @@ The user's manual is [docs/Welding_Table_Generator_Users_Manual.md](docs/Welding
 
 ## What the package contains
 
-Generated files are written to the folder shown on the Output page. A new build puts them in `generator\build\Release\output`.
+The output path on the form is a job folder. A new install uses `Documents\Welding Table Generator`, because the installed program lives under Program Files and cannot write beside itself. Each successful generate creates a new subfolder such as `WT_24x116_RevA_20261004-090437`. It does not delete older packages or DXF files already in the job folder. If generation fails, that partial folder is removed and the previous package stays.
+
+Part names include the table size and revision. `Package_Manifest.json` records the application version, job id, revision, and a SHA-256 of the settings. The same identity is on the PDF. Overlapping holes, holes through an edge, holes through slots, a contour that crosses itself, a skipped slot or tab, and a nest that was requested but does not fit block the package.
 
 | File | Contents |
 | --- | --- |
@@ -18,7 +20,8 @@ Generated files are written to the folder shown on the Output page. A new build 
 | `Q01`, `Q02` | Slot-fit and hole-fit coupons |
 | `R01` | Reference frame plan |
 | Assembly PDF | Dimensions, parts, nest, and tube sticks |
-| `README_Cutting_and_Assembly.md` | Cut notes for that package |
+| `README_Cutting_and_Assembly.md` | Cut notes, including measured thickness, coupon approval, and clamp clearance |
+| `Package_Manifest.json` | Version, job id, revision, and settings hash |
 
 The tube nest is drawn on the Frame view and in the PDF. It is not a separate DXF.
 
@@ -57,6 +60,14 @@ Check the Rev A geometry without opening the window:
 
 The report is `generator\build\Release\self-check.txt`. Exit code 0 means the check passed.
 
+Re-read exported DXFs across a settings sweep. The sweep writes each package into a temporary job folder, opens the DXFs with libdxfrw, and checks inches, AC1018, closed contours, part size, nest borders, and that a failed package does not delete an existing DXF:
+
+```powershell
+& ".\build\Release\Welding Table Generator.exe" --sweep
+```
+
+The report is `generator\build\Release\sweep.txt`.
+
 Export the Rev A package from the command line:
 
 ```powershell
@@ -65,7 +76,7 @@ Export the Rev A package from the command line:
 
 ## Installer
 
-[installer/WeldingTableGenerator.iss](installer/WeldingTableGenerator.iss) builds a 64-bit Inno Setup package. It includes the Release program, the Qt and VTK runtime, the Visual C++ runtime, this license, the user's manual, and the libdxfrw sources.
+[installer/WeldingTableGenerator.iss](installer/WeldingTableGenerator.iss) builds a 64-bit Inno Setup package. It includes the Release program, the Qt and VTK runtime, the Visual C++ runtime, the user's manual, the application source, and the libdxfrw sources.
 
 Compile it with Inno Setup 6 after a Release build:
 
@@ -73,12 +84,12 @@ Compile it with Inno Setup 6 after a Release build:
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ".\installer\WeldingTableGenerator.iss"
 ```
 
-The setup program is `installer\output\WeldingTableGenerator-1.0.0-Setup.exe`. It installs to `C:\Program Files\Welding Table Generator`.
+The setup program is `installer\output\WeldingTableGenerator-1.0.1-Setup.exe`. It installs to `C:\Program Files\Welding Table Generator`. Generated packages go to the user's Documents folder, not under Program Files.
 
 `Libdxfrw` in the script defaults to `D:\ANest\third_party\libdxfrw`. `CrtDir` defaults to the Visual Studio 2022 VC++ redistributable folder used on this machine. Pass `/DLibdxfrw=...` or `/DCrtDir=...` to `ISCC.exe` if those paths differ.
 
 ## License
 
-The application source is MIT, copyright Adam G. Sweeney <AGSweeney@gmail.com>. See [LICENSE](LICENSE).
+The application source files are MIT, copyright Adam G. Sweeney <AGSweeney@gmail.com>. See [LICENSE](LICENSE).
 
-The DXF writer is linked from libdxfrw, which is GPL version 2 or later. Qt is used as separate libraries under the LGPL. VTK is BSD-3-Clause. Details are in [installer/THIRD_PARTY_NOTICES.txt](installer/THIRD_PARTY_NOTICES.txt).
+The executable is statically linked with libdxfrw, which is GPL-2.0-or-later. That combined program is distributed under GPL-2.0-or-later. The installer shows those terms and installs the corresponding source: `source\generator` for this program and `third-party\libdxfrw` for libdxfrw, plus the build steps in this file. Qt is shipped as separate DLLs under the LGPL. VTK is BSD-3-Clause. See [installer/DISTRIBUTION.txt](installer/DISTRIBUTION.txt) and [installer/THIRD_PARTY_NOTICES.txt](installer/THIRD_PARTY_NOTICES.txt).

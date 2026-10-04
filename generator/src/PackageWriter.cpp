@@ -23,12 +23,16 @@
 
 #include "PackageWriter.h"
 
+#include "AppVersion.h"
 #include "DxfWriter.h"
 #include "PaintTable.h"
 
+#include <QCryptographicHash>
 #include <QDate>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -38,6 +42,21 @@
 
 #include <algorithm>
 #include <cmath>
+
+QString packageRevisionToken(const QString& revision) {
+    QString out;
+    for (const QChar c : revision) {
+        if (c.isLetterOrNumber() || c == QLatin1Char('-') || c == QLatin1Char('_')) {
+            out += c;
+        }
+    }
+    return out.isEmpty() ? QStringLiteral("A") : out;
+}
+
+QString packageSettingsHash(const TableSpec& spec) {
+    const QByteArray json = QJsonDocument(spec.toJson()).toJson(QJsonDocument::Compact);
+    return QString::fromLatin1(QCryptographicHash::hash(json, QCryptographicHash::Sha256).toHex());
+}
 
 namespace {
 
@@ -54,10 +73,12 @@ QString dimToken(double v) {
     return s;
 }
 
-QString partFileName(const Part& part) {
+QString partFileName(const Part& part, const TableSpec& spec) {
     QString name = part.name;
     name.replace(QLatin1Char(' '), QLatin1Char('_'));
-    return QStringLiteral("%1_%2_%3in_QTY%4.dxf").arg(part.code, name, inches(part.thickness), QString::number(part.qty));
+    return QStringLiteral("%1_%2_%3x%4_Rev%5_%6in_QTY%7.dxf")
+        .arg(part.code, name, dimToken(spec.width), dimToken(spec.length), packageRevisionToken(spec.revision),
+             inches(part.thickness), QString::number(part.qty));
 }
 
 void writeTextFile(const QString& path, const QString& text, QStringList& files, QString& error) {
@@ -81,7 +102,7 @@ QString listOf(const std::vector<double>& values) {
     return parts.join(QStringLiteral(", "));
 }
 
-QString readmeFor(const TableModel& model) {
+QString readmeFor(const TableModel& model, const QString& version, const QString& jobId, const QString& hash) {
     const TableSpec& s = model.spec();
     const QString date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
     QString ribs;
@@ -113,7 +134,7 @@ QString readmeFor(const TableModel& model) {
                        : QStringLiteral("The thin-stock nest uses %1 sheets of %2 x %3. Each sheet is a separate DXF and PDF page.\n")
                              .arg(model.nestSheetCount())
                              .arg(inches(s.sheetLength, 1), inches(s.sheetWidth, 1));
-    return QStringLiteral(
+    QString text = QStringLiteral(
                "# %1 %2 x %3 - Revision %4\n\n"
                "Laser-cut fabrication layout generated %5. Dimensions are inches unless stated otherwise.\n\n"
                "## Selections\n%6\n"
@@ -121,7 +142,7 @@ QString readmeFor(const TableModel& model) {
                "- N01, N02, ...: one thin-stock nest sheet each. Use the nest or the individual thin parts, not both.\n"
                "- R01: leg and stringer plan, reference only, when legs are enabled.\n"
                "- F01 foot plates are cut from the top thickness. The tube nest is on the frame sheet, not a DXF.\n"
-               "- Assembly PDF, Geometry_Checks.json, and Job_Settings.json.\n\n"
+               "- Assembly PDF, Package_Manifest.json, Geometry_Checks.json, and Job_Settings.json.\n\n"
                "## CAM\n"
                "DXF AC1018, full size, coordinates in inches. Cut only CUT_OUTER and CUT_INNER. "
                "REF_NO_CUT and LABEL_NO_CUT must stay off. Geometry is nominal finished size. Apply kerf in CAM.\n\n"
@@ -154,9 +175,22 @@ QString readmeFor(const TableModel& model) {
         .arg(inches(s.finishedHeight, 3))
         .arg(inches(s.topThickness, 3))
         .arg(inches(model.legLengthExample(), 3));
+    const QString clamp = model.clampBlockedHoles() == 0
+                              ? QStringLiteral("The layout leaves at least 1.000 in from every dog-hole edge to the nearest rib or apron. "
+                                               "Still confirm a clamp fits under the holes you will use.")
+                              : QStringLiteral("%1 dog holes have less than 1.000 in from the hole edge to a rib or apron. "
+                                               "Confirm a clamp fits before cutting.")
+                                    .arg(model.clampBlockedHoles());
+    text += QStringLiteral("\n## Before cutting\n"
+                           "- Measure the stock. Do not cut unless the top is %1 in and the web is %2 in.\n"
+                           "- Cut Q01 and approve the tab and the dog before any plate. A pin that enters the hole is not approval to cut.\n"
+                           "- %3\n")
+                .arg(inches(s.topThickness), inches(s.webThickness), clamp);
+    return QStringLiteral("Application %1. Job %2. Revision %3. Settings %4.\n\n").arg(version, jobId, s.revision, hash) + text;
 }
 
-void writePdf(const TableModel& model, const QString& path, QStringList& files, QString& error) {
+void writePdf(const TableModel& model, const QString& path, const QString& version, const QString& jobId, const QString& hash,
+              QStringList& files, QString& error) {
     QPdfWriter pdf(path);
     pdf.setTitle(model.spec().title);
     pdf.setCreator(QStringLiteral("Welding Table Generator"));
@@ -196,7 +230,8 @@ void writePdf(const TableModel& model, const QString& path, QStringList& files, 
         painter.setPen(gray);
         painter.setFont(QFont(QStringLiteral("Segoe UI"), 9));
         painter.drawText(QRectF(36, H - 32, W - 72, 20), Qt::AlignVCenter,
-                         QStringLiteral("Dimensions in inches. Drawings are not to scale. Cut files are full size."));
+                         QStringLiteral("v%1  job %2  %3  |  inches, full size, not a scaled drawing")
+                             .arg(version, jobId, hash.left(12)));
         painter.drawText(QRectF(36, H - 32, W - 72, 20), Qt::AlignRight | Qt::AlignVCenter,
                          QStringLiteral("%1 / %2").arg(page).arg(pageCount));
     };
@@ -360,8 +395,15 @@ void writePdf(const TableModel& model, const QString& path, QStringList& files, 
         }
         ++row;
     }
+    const QString clamp = model.clampBlockedHoles() == 0
+                              ? QStringLiteral("Confirm a clamp fits under the dog holes. The layout leaves 1 in from each hole edge to the nearest rib or apron.")
+                              : QStringLiteral("Confirm a clamp fits under the dog holes. %1 holes have less than 1 in to a rib or apron.")
+                                    .arg(model.clampBlockedHoles());
     QStringList steps = {
-        QStringLiteral("Cut Q01 before the plates. Fit its tab through the coupon slots and check a real dog against the hole."),
+        QStringLiteral("Measure the stock. Do not cut unless the top is %1 in and the web is %2 in.")
+            .arg(inches(s.topThickness), inches(s.webThickness)),
+        QStringLiteral("Cut Q01 before the plates. Approve the tab and the dog. A pin that enters the hole is not approval to cut."),
+        clamp,
         QStringLiteral("Import DXF at 1:1 inches. Confirm the top is %1 x %2 and a hole is %3 in.")
             .arg(inches(s.length), inches(s.width), inches(model.holeDiameterIn(), 6)),
         QStringLiteral("Deburr, assemble the cage, then dry-fit all %1 top tabs before final welds.").arg(model.topSlotCount()),
@@ -384,81 +426,115 @@ PackageResult writePackage(const TableModel& model, const QString& outputDir) {
         result.message = model.errors().isEmpty() ? QStringLiteral("Nothing to write.") : model.errors().join(QStringLiteral("\n"));
         return result;
     }
+    const TableSpec& spec = model.spec();
+    if (spec.writeNest && !model.nestOk()) {
+        result.message = model.nestError().isEmpty() ? QStringLiteral("The requested nest does not fit.") : model.nestError();
+        return result;
+    }
     QDir root(outputDir);
     if (outputDir.trimmed().isEmpty() || !root.mkpath(QStringLiteral("."))) {
         result.message = QStringLiteral("Choose a folder the program can write to.");
         return result;
     }
-    const TableSpec& spec = model.spec();
+
+    const QString version = QString::fromLatin1(kAppVersion);
+    const QString jobId = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    const QString hash = packageSettingsHash(spec);
+    const QString revision = packageRevisionToken(spec.revision);
+    QString folderName = QStringLiteral("WT_%1x%2_Rev%3_%4").arg(dimToken(spec.width), dimToken(spec.length), revision, jobId);
+    int suffix = 2;
+    while (root.exists(folderName)) {
+        folderName = QStringLiteral("WT_%1x%2_Rev%3_%4-%5")
+                         .arg(dimToken(spec.width), dimToken(spec.length), revision, jobId)
+                         .arg(suffix);
+        ++suffix;
+    }
+    const QString stageName = QStringLiteral(".partial-%1").arg(jobId);
+    const QString stagePath = root.filePath(stageName);
+    QDir stage(stagePath);
+    if (stage.exists()) {
+        stage.removeRecursively();
+    }
+    if (!root.mkpath(stageName)) {
+        result.message = QStringLiteral("Choose a folder the program can write to.");
+        return result;
+    }
+    auto fail = [&](const QString& message) {
+        QDir(stagePath).removeRecursively();
+        result.files.clear();
+        result.message = message;
+        return result;
+    };
+
     QString error;
     if (spec.writeIndividuals || spec.writeNest || spec.writeFrame) {
-        root.mkpath(QStringLiteral("DXF"));
-        QDir dxf(root.filePath(QStringLiteral("DXF")));
-        const QStringList old = dxf.entryList({QStringLiteral("*.dxf")}, QDir::Files);
-        for (const QString& name : old) {
-            dxf.remove(name);
-        }
+        stage.mkpath(QStringLiteral("DXF"));
+        QDir dxf(stage.filePath(QStringLiteral("DXF")));
         if (spec.writeIndividuals) {
             for (const Part& part : model.parts()) {
                 if (part.qty < 1) {
                     continue;
                 }
-                const QString path = dxf.filePath(partFileName(part));
+                const QString path = dxf.filePath(partFileName(part, spec));
                 if (!writePartDxf(path, part, error)) {
-                    result.message = error;
-                    return result;
+                    return fail(error);
                 }
                 result.files << path;
             }
         }
         if (spec.writeNest) {
-            if (!model.nestOk()) {
-                result.message = model.nestError();
-            } else {
-                for (int sheet = 0; sheet < model.nestSheetCount(); ++sheet) {
-                    const QString path = dxf.filePath(QStringLiteral("N%1_%2in_%3x%4_Sheet_Nest.dxf")
-                                                         .arg(sheet + 1, 2, 10, QChar('0'))
-                                                         .arg(inches(spec.webThickness), dimToken(spec.sheetWidth),
-                                                              dimToken(spec.sheetLength)));
-                    if (!writeNestDxf(path, model, sheet, error)) {
-                        result.message = error;
-                        return result;
-                    }
-                    result.files << path;
+            for (int sheet = 0; sheet < model.nestSheetCount(); ++sheet) {
+                const QString path = dxf.filePath(QStringLiteral("N%1_%2x%3_Rev%4_%5in_%6x%7_Sheet_Nest.dxf")
+                                                     .arg(sheet + 1, 2, 10, QChar('0'))
+                                                     .arg(dimToken(spec.width))
+                                                     .arg(dimToken(spec.length))
+                                                     .arg(revision)
+                                                     .arg(inches(spec.webThickness))
+                                                     .arg(dimToken(spec.sheetWidth))
+                                                     .arg(dimToken(spec.sheetLength)));
+                if (!writeNestDxf(path, model, sheet, error)) {
+                    return fail(error);
                 }
+                result.files << path;
             }
         }
         if (spec.writeFrame && spec.frame && !model.frame().empty()) {
-            const QString path = dxf.filePath(QStringLiteral("R01_Tube_Frame_Plan_REFERENCE_ONLY.dxf"));
+            const QString path = dxf.filePath(QStringLiteral("R01_%1x%2_Rev%3_Tube_Frame_Plan_REFERENCE_ONLY.dxf")
+                                                 .arg(dimToken(spec.width), dimToken(spec.length), revision));
             if (!writeFrameDxf(path, model, error)) {
-                result.message = error;
-                return result;
+                return fail(error);
             }
             result.files << path;
         }
     }
-    if (!error.isEmpty()) {
-        result.message = error;
-        return result;
-    }
     if (spec.writePdf) {
-        const QString path = root.filePath(QStringLiteral("Welding_Table_%1x%2_Assembly_Rev%3.pdf")
-                                               .arg(dimToken(spec.width), dimToken(spec.length), spec.revision));
-        writePdf(model, path, result.files, error);
+        const QString path = stage.filePath(QStringLiteral("Welding_Table_%1x%2_Rev%3.pdf").arg(dimToken(spec.width), dimToken(spec.length), revision));
+        writePdf(model, path, version, jobId, hash, result.files, error);
         if (!error.isEmpty()) {
-            result.message = error;
-            return result;
+            return fail(error);
         }
     }
     if (spec.writeReadme) {
-        writeTextFile(root.filePath(QStringLiteral("README_Cutting_and_Assembly.md")), readmeFor(model), result.files, error);
+        writeTextFile(stage.filePath(QStringLiteral("README_Cutting_and_Assembly.md")), readmeFor(model, version, jobId, hash),
+                      result.files, error);
         if (!error.isEmpty()) {
-            result.message = error;
-            return result;
+            return fail(error);
         }
     }
+    QJsonObject identity;
+    identity.insert(QStringLiteral("application"), QStringLiteral("Welding Table Generator"));
+    identity.insert(QStringLiteral("application_version"), version);
+    identity.insert(QStringLiteral("job_id"), jobId);
+    identity.insert(QStringLiteral("revision"), spec.revision);
+    identity.insert(QStringLiteral("settings_sha256"), hash);
+    identity.insert(QStringLiteral("generated"), QDateTime::currentDateTime().toString(Qt::ISODate));
+    identity.insert(QStringLiteral("width_in"), spec.width);
+    identity.insert(QStringLiteral("length_in"), spec.length);
     if (spec.writeJson) {
         QJsonObject report = spec.toJson();
+        for (auto it = identity.begin(); it != identity.end(); ++it) {
+            report.insert(it.key(), it.value());
+        }
         report.insert(QStringLiteral("top_holes"), model.topHoleCount());
         report.insert(QStringLiteral("top_slots"), model.topSlotCount());
         report.insert(QStringLiteral("long_stiffeners"), model.longRibCount());
@@ -468,6 +544,7 @@ PackageResult writePackage(const TableModel& model, const QString& outputDir) {
         report.insert(QStringLiteral("assembly_weight_lb"), model.assemblyWeight());
         report.insert(QStringLiteral("lightening_weight_saved_lb"), model.lighteningSaved());
         report.insert(QStringLiteral("hole_diameter_in"), model.holeDiameterIn());
+        report.insert(QStringLiteral("clamp_blocked_holes"), model.clampBlockedHoles());
         QJsonArray checks;
         for (const QString& c : model.checks()) {
             checks.append(c);
@@ -490,17 +567,44 @@ PackageResult writePackage(const TableModel& model, const QString& outputDir) {
             parts.append(item);
         }
         report.insert(QStringLiteral("parts"), parts);
-        writeTextFile(root.filePath(QStringLiteral("Geometry_Checks.json")),
+        writeTextFile(stage.filePath(QStringLiteral("Geometry_Checks.json")),
                       QString::fromUtf8(QJsonDocument(report).toJson(QJsonDocument::Indented)), result.files, error);
-        writeTextFile(root.filePath(QStringLiteral("Job_Settings.json")),
+        if (!error.isEmpty()) {
+            return fail(error);
+        }
+        writeTextFile(stage.filePath(QStringLiteral("Job_Settings.json")),
                       QString::fromUtf8(QJsonDocument(spec.toJson()).toJson(QJsonDocument::Indented)), result.files, error);
         if (!error.isEmpty()) {
-            result.message = error;
-            return result;
+            return fail(error);
         }
     }
+    QJsonArray fileNames;
+    for (const QString& path : result.files) {
+        fileNames.append(QFileInfo(path).fileName());
+    }
+    identity.insert(QStringLiteral("files"), fileNames);
+    writeTextFile(stage.filePath(QStringLiteral("Package_Manifest.json")),
+                  QString::fromUtf8(QJsonDocument(identity).toJson(QJsonDocument::Indented)), result.files, error);
+    if (!error.isEmpty()) {
+        return fail(error);
+    }
+
+    QStringList relative;
+    relative.reserve(result.files.size());
+    for (const QString& path : result.files) {
+        relative << stage.relativeFilePath(path);
+    }
+    const QString finalPath = root.filePath(folderName);
+    if (!QFile::rename(stagePath, finalPath)) {
+        return fail(QStringLiteral("Could not finish the package folder."));
+    }
+    result.files.clear();
+    for (const QString& name : relative) {
+        result.files << QDir(finalPath).filePath(name);
+    }
     result.ok = true;
-    result.message = QStringLiteral("Wrote %1 files to %2").arg(result.files.size()).arg(root.absolutePath());
+    result.packageDir = QDir(finalPath).absolutePath();
+    result.message = QStringLiteral("Wrote %1 files to %2").arg(result.files.size()).arg(result.packageDir);
     if (!model.warnings().isEmpty()) {
         result.message += QStringLiteral("\n%1").arg(model.warnings().join(QStringLiteral("\n")));
     }

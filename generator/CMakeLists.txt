@@ -49,6 +49,9 @@ qt_standard_project_setup()
 
 qt_add_executable(WeldingTableGenerator WIN32
     src/main.cpp
+    src/AppVersion.h
+    src/DxfAudit.cpp
+    src/DxfAudit.h
     src/AppStyle.cpp
     src/AppStyle.h
     src/TableModel.cpp

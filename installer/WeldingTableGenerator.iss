@@ -30,10 +30,12 @@
 #endif
 
 #define MyAppName "Welding Table Generator"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Adam G. Sweeney"
 #define MyAppExeName "Welding Table Generator.exe"
+#ifndef BuildDir
 #define BuildDir "..\generator\build\Release"
+#endif
 
 [Setup]
 AppId={{8F3C1A6E-5B24-4D7A-9C18-2E6F4A9B7D01}
@@ -52,7 +54,7 @@ VersionInfoProductName={#MyAppName}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-LicenseFile=..\LICENSE
+LicenseFile=DISTRIBUTION.txt
 OutputDir=output
 OutputBaseFilename=WeldingTableGenerator-{#MyAppVersion}-Setup
 SetupIconFile=..\generator\resources\icons\app\welding-table.ico
@@ -90,7 +92,14 @@ Source: "{#CrtDir}\msvcp140_2.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#CrtDir}\vcruntime140.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#CrtDir}\vcruntime140_1.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "DISTRIBUTION.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD_PARTY_NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\generator\CMakeLists.txt"; DestDir: "{app}\source\generator"; Flags: ignoreversion
+Source: "..\generator\build.ps1"; DestDir: "{app}\source\generator"; Flags: ignoreversion
+Source: "..\generator\src\*"; DestDir: "{app}\source\generator\src"; Flags: ignoreversion
+Source: "..\generator\cmake\*"; DestDir: "{app}\source\generator\cmake"; Flags: ignoreversion
+Source: "..\generator\resources\*"; DestDir: "{app}\source\generator\resources"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\docs\Welding_Table_Generator_Users_Manual.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\docs\manual\*"; DestDir: "{app}\docs\manual"; Excludes: "capture.ps1"; Flags: ignoreversion
 Source: "{#Libdxfrw}\COPYING"; DestDir: "{app}\third-party\libdxfrw"; Flags: ignoreversion

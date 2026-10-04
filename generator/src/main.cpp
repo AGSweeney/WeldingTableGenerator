@@ -22,6 +22,8 @@
  */
 
 #include "AppStyle.h"
+#include "AppVersion.h"
+#include "DxfAudit.h"
 #include "MainWindow.h"
 #include "PackageWriter.h"
 #include "TableModel.h"
@@ -157,6 +159,18 @@ int main(int argc, char* argv[]) {
         QCoreApplication app(argc, argv);
         return selfCheck();
     }
+    if (args.contains(QStringLiteral("--sweep"))) {
+        QApplication app(argc, argv);
+        QString report;
+        const int code = runGeometrySweep(report);
+        QFile file(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("sweep.txt")));
+        if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            file.write(report.toUtf8());
+        }
+        fprintf(stdout, "%s", report.toLocal8Bit().constData());
+        fflush(stdout);
+        return code;
+    }
     QSurfaceFormat::setDefaultFormat(QVTKOpenGLNativeWidget::defaultFormat());
     if (args.size() >= 2 && args.at(0) == QLatin1String("--export")) {
         QApplication app(argc, argv);
@@ -185,6 +199,7 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("WeldingTable"));
     QCoreApplication::setApplicationName(QStringLiteral("Welding Table Generator"));
+    QCoreApplication::setApplicationVersion(QString::fromLatin1(kAppVersion));
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/app/welding-table.svg")));
     AppStyle::apply(app);
     MainWindow window;

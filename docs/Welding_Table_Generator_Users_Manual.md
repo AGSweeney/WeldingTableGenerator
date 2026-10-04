@@ -196,8 +196,8 @@ Use either the nest DXF or the individual thin-part DXFs at the laser, not both.
 
 Under the form, on every page:
 
-- The path is the folder the package is written into. **Folder** browses for it. A new install uses an `output` folder next to the program.
-- **Open the folder after generating** opens that folder when the write succeeds.
+- The path is the job folder. **Folder** browses for it. A new install uses `Documents\Welding Table Generator`, which a normal account can write. Each successful generate adds a new subfolder named with the table size, revision, and job id. An older package in that folder is left alone.
+- **Open the folder after generating** opens the new package folder when the write succeeds. A failed generate does not replace a package that is already there.
 - **Generate package** writes the files. The button is also **Ctrl+Enter**.
 
 ## Views
@@ -274,7 +274,7 @@ Legs are green and run from the foot plate up to the underside of the top. Strin
 
 ## What Generate package writes
 
-Files land in the folder under the form. Names use the revision and the sizes. For the starting table the DXF folder contains:
+Each generate creates one new folder under the path on the form, for example `WT_24x116_RevA_20261004-085501`. The DXF names include the table size and revision, so two different tables do not share a file name. For the starting table that folder's DXF directory contains:
 
 | File | Stock | Cut it? |
 | --- | --- | --- |
@@ -304,16 +304,19 @@ Also written beside the DXF folder:
 
 - `Welding_Table_<width>x<length>_Assembly_Rev<letter>.pdf` — isometric, coordinates, rib profiles, the nest, the leg plan and tube nest, and the bill of materials.
 - `README_Cutting_and_Assembly.md` — the sizes you chose, the file list, the coupon widths, and the assembly order.
+- `Package_Manifest.json` — application version, job id, revision, and the settings hash.
 - `Geometry_Checks.json` — the counts the program checked.
 - `Job_Settings.json` — reload this from File > Load settings to get the same table back.
 
 ## A sensible first cut
 
-1. Leave the coupon checks on. Generate the package.
-2. Cut Q01 and try a real tab in each of the five slots. Try a real dog in a hole.
-3. Then cut either the nest or the individual apron and rib files.
-4. Cut the top and the foot plates from the thicker stock.
-5. Saw the tube from the nest on the Frame view, or from the same picture in the PDF.
-6. Assemble the cage, dry-fit every top tab, then weld. Legs weld to the inside of the apron and up to the underside of the top.
+1. Measure the plate and the web. Do not cut if either thickness differs from the package.
+2. Leave the coupon checks on. Generate the package.
+3. Cut Q01 and try a real tab in each of the five slots. Try a real dog in a hole. Approve the coupons before cutting the plates.
+4. At each dog hole you will use, confirm a clamp fits under the top. A rib or apron can block the clamp even when the pin enters the hole.
+5. Then cut either the nest or the individual apron and rib files.
+6. Cut the top and the foot plates from the thicker stock.
+7. Saw the tube from the nest on the Frame view, or from the same picture in the PDF.
+8. Assemble the cage, dry-fit every top tab, then weld. Legs weld to the inside of the apron and up to the underside of the top.
 
 The program does not supply a load rating, a weld schedule, or a flatness callout.

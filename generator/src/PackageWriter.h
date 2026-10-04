@@ -31,7 +31,10 @@
 struct PackageResult {
     bool ok = false;
     QString message;
+    QString packageDir;
     QStringList files;
 };
 
+QString packageSettingsHash(const TableSpec& spec);
+QString packageRevisionToken(const QString& revision);
 PackageResult writePackage(const TableModel& model, const QString& outputDir);

@@ -1,12 +1,17 @@
 Welding Table Generator uses the following third-party software.
-The application source is under the MIT License, copyright
-Adam G. Sweeney <AGSweeney@gmail.com>. See LICENSE.
+
+The application source files are MIT, copyright Adam G. Sweeney
+<AGSweeney@gmail.com>. See LICENSE.
+
+The installed executable is linked with libdxfrw and is distributed under
+the GNU General Public License version 2 or later. See DISTRIBUTION.txt.
+Corresponding source for that executable is installed under source\ and
+third-party\libdxfrw, with build instructions in README.md.
 
 libdxfrw
-  The DXF writer is linked from libdxfrw, copyright A. Stebich and
-  José F. Soriano, GNU General Public License version 2 or later.
-  A copy of that license is installed at third-party\libdxfrw\COPYING,
-  and the libdxfrw sources used to build the program are installed under
+  Copyright A. Stebich and José F. Soriano, GNU General Public License
+  version 2 or later. The license text is third-party\libdxfrw\COPYING.
+  The libdxfrw sources used to build the program are under
   third-party\libdxfrw.
 
 Qt 6

@@ -36,6 +36,8 @@
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
+#include <QStandardPaths>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFile>
@@ -528,7 +530,10 @@ void MainWindow::buildUi() {
     dockLayout->addWidget(m_hint);
 
     auto* outRow = new QHBoxLayout();
-    m_output = new QLineEdit(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("output")));
+    const QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    const QString jobFolder = documents.isEmpty() ? QDir::home().filePath(QStringLiteral("Welding Table Generator"))
+                                                  : QDir(documents).filePath(QStringLiteral("Welding Table Generator"));
+    m_output = new QLineEdit(jobFolder);
     auto* browse = new QPushButton(QStringLiteral("Folder"));
     browse->setToolTip(QStringLiteral("Choose where the DXF, PDF, and notes are written."));
     outRow->addWidget(m_output, 1);
@@ -807,8 +812,8 @@ void MainWindow::generate() {
         return;
     }
     saveSettings();
-    if (m_openFolder->isChecked()) {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(QDir(m_output->text().trimmed()).absolutePath()));
+    if (m_openFolder->isChecked() && !result.packageDir.isEmpty()) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(result.packageDir));
     }
 }
 
@@ -828,7 +833,24 @@ void MainWindow::loadSettings() {
     m_marginY->setEnabled(!m_square->isChecked());
     m_openFolder->setChecked(settings.value(QStringLiteral("openFolder"), true).toBool());
     const QString output = settings.value(QStringLiteral("output")).toString();
-    if (!output.isEmpty()) {
+    const QString programFiles = QString::fromLocal8Bit(qgetenv("ProgramFiles"));
+    const bool underProgramFiles = !programFiles.isEmpty() &&
+        QDir::cleanPath(output).startsWith(QDir::cleanPath(programFiles), Qt::CaseInsensitive);
+    const bool besideExe = QDir::cleanPath(output).startsWith(QDir::cleanPath(QCoreApplication::applicationDirPath()), Qt::CaseInsensitive);
+    bool writable = false;
+    if (!output.isEmpty() && !underProgramFiles) {
+        QDir dir(output);
+        writable = dir.mkpath(QStringLiteral("."));
+        if (writable) {
+            QFile probe(dir.filePath(QStringLiteral(".write-probe")));
+            writable = probe.open(QIODevice::WriteOnly);
+            if (writable) {
+                probe.close();
+                probe.remove();
+            }
+        }
+    }
+    if (!output.isEmpty() && !underProgramFiles && (writable || !besideExe)) {
         m_output->setText(output);
     }
     m_preset->setCurrentIndex(3);
