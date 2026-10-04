@@ -911,9 +911,9 @@ void VtkTableView::setModel(const TableModel* model) {
                 stringers.addBox(r.left(), r.top(), z0, r.right(), r.bottom(), z0 + std::max(0.05, spec.stringerSize));
             }
         }
-        addMesh(stringers.finish(), 0.36, 0.43, 0.48, false);
         addMesh(legs.finish(), 0.24, 0.42, 0.24, false);
         addMesh(feet.finish(), 0.16, 0.30, 0.16, false);
+        addMesh(stringers.finish(), 0.36, 0.43, 0.48, false);
     }
 
     Mesh rims;

@@ -445,7 +445,7 @@ void MainWindow::buildUi() {
     m_stringerHeight = numSpin(0, 48, 4, 3, 0.25, QStringLiteral(" in"),
                                QStringLiteral("Height from the floor to the bottom of the stringers."));
     m_doubleStringers = check(QStringLiteral("Double long stringers"), false,
-                              QStringLiteral("Front and back stringers, so a shelf can sit on the frame. One center stringer is enough without a shelf."));
+                              QStringLiteral("Every tube fits between leg faces. Front and back stringers are centered on the side faces; cross tubes are centered between each front/back leg pair."));
     m_tubeWall = numSpin(0.06, 0.5, 0.1875, 4, 0.0625, QStringLiteral(" in"),
                          QStringLiteral("Wall thickness, used for the note. 0.1875 in is 3/16."));
     m_supports = new QSpinBox();

@@ -1641,33 +1641,58 @@ bool TableModel::rebuild(const TableSpec& spec) {
             m_frame.push_back({QRectF(QPointF(fx, yFront), QPointF(fx + leg, yFront + leg)), 2});
             m_frame.push_back({QRectF(QPointF(fx, yBack), QPointF(fx + leg, yBack + leg)), 2});
         }
-        // Cross tubes are centered on every leg. In the single-stringer frame they run
-        // through, and the center stringer is cut into the pieces that fit between them.
+        // Every tube terminates at a leg face; no tube passes through a leg.
+        // Single stringer: cross tubes span each front/back leg pair, and the
+        // center stringer is cut into the pieces that fit between those tubes.
+        // Double long stringers: front/back rails span adjacent left/right leg
+        // faces, centered on those faces. Cross tubes span the front/back leg
+        // faces, centered on each pair.
         const double tubeInset = (leg - str) * 0.5;
         const double xRun0 = xs.front() + (leg + str) * 0.5;
         const double xRun1 = xs.back() + tubeInset;
-        double crossY0 = yFront + leg;
-        double crossY1 = yBack;
-        if (spec.doubleStringers) {
-            m_frame.push_back({QRectF(QPointF(xRun0, yFront + leg), QPointF(xRun1, yFront + leg + str)), 3});
-            m_frame.push_back({QRectF(QPointF(xRun0, yBack - str), QPointF(xRun1, yBack)), 3});
-            crossY0 = yFront + leg + str;
-            crossY1 = yBack - str;
-            m_railLength = std::max(0.0, xRun1 - xRun0);
-        }
+        const double yFrontStr = yFront + tubeInset;
+        const double yBackStr = yBack + tubeInset;
+        const double crossY0 = yFront + leg;
+        const double crossY1 = yBack;
         m_crossLength = std::max(0.0, crossY1 - crossY0);
         std::vector<double> crossLeft;
-        if (m_crossLength > 0.5 && xRun1 - xRun0 > 0.5) {
+        const bool crossSpan = xRun1 - xRun0 > 0.5;
+        if (m_crossLength > 0.5 && crossSpan) {
             const int n = static_cast<int>(xs.size());
             crossLeft.reserve(static_cast<size_t>(n));
             for (int i = 0; i < n; ++i) {
                 const double fx = xs[static_cast<size_t>(i)];
                 const double sx = fx + tubeInset;
+                const QRectF tube(QPointF(sx, crossY0), QPointF(sx + str, crossY1));
+                bool hit = false;
+                if (spec.doubleStringers) {
+                    for (const FrameRect& fr : m_frame) {
+                        if (fr.role == 4 && fr.rect.intersects(tube.adjusted(0.05, 0.05, -0.05, -0.05))) {
+                            hit = true;
+                            break;
+                        }
+                    }
+                }
+                if (hit) {
+                    continue;
+                }
                 crossLeft.push_back(sx);
-                m_frame.push_back({QRectF(QPointF(sx, crossY0), QPointF(sx + str, crossY1)), 4});
+                m_frame.push_back({tube, 4});
             }
         }
-        if (!spec.doubleStringers && crossLeft.size() >= 2) {
+        if (spec.doubleStringers) {
+            m_railLength = 0;
+            for (size_t i = 0; i + 1 < xs.size(); ++i) {
+                const double a = xs[i] + leg;
+                const double b = xs[i + 1];
+                if (b - a < 0.5) {
+                    continue;
+                }
+                m_frame.push_back({QRectF(QPointF(a, yFrontStr), QPointF(b, yFrontStr + str)), 3});
+                m_frame.push_back({QRectF(QPointF(a, yBackStr), QPointF(b, yBackStr + str)), 3});
+                m_railLength = std::max(m_railLength, b - a);
+            }
+        } else if (crossLeft.size() >= 2) {
             const double mid = (yFront + leg + yBack) * 0.5;
             m_railLength = 0;
             for (size_t i = 0; i + 1 < crossLeft.size(); ++i) {
@@ -1707,7 +1732,11 @@ bool TableModel::rebuild(const TableSpec& spec) {
         };
         addBlank(leg, QStringLiteral("Leg"), legLengthExample(), pairs * 2);
         if (spec.doubleStringers) {
-            addBlank(str, QStringLiteral("Long stringer"), m_railLength, 2);
+            for (const FrameRect& fr : m_frame) {
+                if (fr.role == 3) {
+                    addBlank(str, QStringLiteral("Long stringer"), fr.rect.width(), 1);
+                }
+            }
         } else {
             for (const FrameRect& fr : m_frame) {
                 if (fr.role == 3) {

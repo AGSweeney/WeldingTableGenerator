@@ -913,18 +913,18 @@ void paintTable(QPainter& painter, const QRectF& port, const TableModel& model, 
         painter.drawRect(QRectF(spec.apronInset + web, spec.apronInset + web, spec.length - 2.0 * (spec.apronInset + web),
                                 spec.width - 2.0 * (spec.apronInset + web)));
         for (const FrameRect& fr : model.frame()) {
-            if (fr.role != 3 && fr.role != 4) {
-                continue;
-            }
-            painter.setBrush(pal.stringer);
-            painter.setPen(cosmetic(pal.edge, 1.2));
-            painter.drawRect(fr.rect);
-        }
-        for (const FrameRect& fr : model.frame()) {
             if (fr.role != 2) {
                 continue;
             }
             painter.setBrush(pal.leg);
+            painter.setPen(cosmetic(pal.edge, 1.2));
+            painter.drawRect(fr.rect);
+        }
+        for (const FrameRect& fr : model.frame()) {
+            if (fr.role != 3 && fr.role != 4) {
+                continue;
+            }
+            painter.setBrush(pal.stringer);
             painter.setPen(cosmetic(pal.edge, 1.2));
             painter.drawRect(fr.rect);
         }
@@ -936,7 +936,7 @@ void paintTable(QPainter& painter, const QRectF& port, const TableModel& model, 
         }
         drawLabel(painter, QPointF(spec.length * 0.5, spec.width + 3.4),
                   spec.doubleStringers
-                      ? QStringLiteral("Two shelf stringers    %1 in tube    %2 in off the floor")
+                      ? QStringLiteral("All tubes fit between leg faces    %1 in tube    %2 in off the floor")
                             .arg(QString::number(spec.stringerSize, 'f', 3), QString::number(spec.stringerHeight, 'f', 2))
                       : QStringLiteral("Center stringer in %1 pieces between the cross tubes    %2 in tube")
                             .arg(centerPieces)

@@ -347,9 +347,8 @@ void writePdf(const TableModel& model, const QString& path, const QString& versi
                 .arg(inches(s.tubeSize), inches(s.stringerSize), inches(s.tubeWall, 4)),
             QStringLiteral("Legs weld to the inside of the apron, up to the underside of the top. Intermediate legs sit in a corner between a cross rib and the apron."),
             s.doubleStringers
-                ? QStringLiteral("%1 leg pairs. Two long stringers, %2 in each, for a shelf. Cross stringers %3 in.")
+                ? QStringLiteral("%1 leg pairs. Every tube fits between leg faces. Cross tubes are %2 in.")
                       .arg(s.frameSupports)
-                      .arg(inches(model.railLength()))
                       .arg(inches(model.crossmemberLength()))
                 : QStringLiteral("%1 leg pairs. Center stringer is cut between the cross tubes. Cross stringers %2 in.")
                       .arg(s.frameSupports)

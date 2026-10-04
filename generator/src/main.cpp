@@ -126,6 +126,81 @@ int selfCheck() {
         const bool stockOk = std::abs(nest.stockFeet - 20.0) < 1e-6 || std::abs(nest.stockFeet - 24.0) < 1e-6;
         expect(stockOk && !nest.sticks.empty(), QStringLiteral("tube stock %1 ft").arg(nest.stockFeet));
     }
+    {
+        TableSpec shelf = TableSpec::revA();
+        shelf.doubleStringers = true;
+        shelf.frameSupports = 2;
+        TableModel shelfModel;
+        expect(shelfModel.rebuild(shelf) && shelfModel.errors().isEmpty(), QStringLiteral("shelf frame rebuild"));
+        int rails = 0;
+        int crosses = 0;
+        QRectF frontLeg;
+        bool haveFront = false;
+        for (const auto& fr : shelfModel.frame()) {
+            if (fr.role == 2) {
+                if (!haveFront || fr.rect.top() < frontLeg.top()) {
+                    frontLeg = fr.rect;
+                    haveFront = true;
+                }
+            } else if (fr.role == 3) {
+                ++rails;
+            } else if (fr.role == 4) {
+                ++crosses;
+            }
+        }
+        expect(rails == 2 && crosses == 2, QStringLiteral("shelf tubes rails %1 crosses %2").arg(rails).arg(crosses));
+        QRectF rightFront = frontLeg;
+        for (const auto& fr : shelfModel.frame()) {
+            if (fr.role == 2 && std::abs(fr.rect.top() - frontLeg.top()) < 1e-6 && fr.rect.left() > rightFront.left()) {
+                rightFront = fr.rect;
+            }
+        }
+        QRectF backLeg;
+        for (const auto& fr : shelfModel.frame()) {
+            if (fr.role == 2 && std::abs(fr.rect.left() - frontLeg.left()) < 1e-6 && fr.rect.top() > backLeg.top()) {
+                backLeg = fr.rect;
+            }
+        }
+        const double legMidX = (frontLeg.left() + frontLeg.right()) * 0.5;
+        const double legMidY = (frontLeg.top() + frontLeg.bottom()) * 0.5;
+        QRectF leftCross;
+        QRectF frontRail;
+        bool haveLeft = false;
+        bool haveRail = false;
+        bool tubeInsideLeg = false;
+        for (const auto& fr : shelfModel.frame()) {
+            if (fr.role == 3 || fr.role == 4) {
+                for (const auto& leg : shelfModel.frame()) {
+                    if (leg.role == 2 && fr.rect.intersects(leg.rect.adjusted(0.02, 0.02, -0.02, -0.02))) {
+                        tubeInsideLeg = true;
+                    }
+                }
+            }
+            if (fr.role == 4) {
+                const double midX = (fr.rect.left() + fr.rect.right()) * 0.5;
+                if (std::abs(midX - legMidX) < 1e-6) {
+                    leftCross = fr.rect;
+                    haveLeft = true;
+                }
+            } else if (fr.role == 3) {
+                const double midY = (fr.rect.top() + fr.rect.bottom()) * 0.5;
+                if (std::abs(midY - legMidY) < 1e-6) {
+                    frontRail = fr.rect;
+                    haveRail = true;
+                }
+            }
+        }
+        const bool crossBetweenLegs =
+            haveLeft && std::abs((leftCross.left() + leftCross.right()) * 0.5 - legMidX) < 1e-6 &&
+            std::abs(leftCross.top() - frontLeg.bottom()) < 1e-6 &&
+            std::abs(leftCross.bottom() - backLeg.top()) < 1e-6;
+        const bool railBetweenLegs =
+            haveRail && std::abs((frontRail.top() + frontRail.bottom()) * 0.5 - legMidY) < 1e-6 &&
+            std::abs(frontRail.left() - frontLeg.right()) < 1e-6 &&
+            std::abs(frontRail.right() - rightFront.left()) < 1e-6;
+        expect(crossBetweenLegs && railBetweenLegs && !tubeInsideLeg,
+               QStringLiteral("double-stringer tubes fit between leg faces"));
+    }
     auto expectTabs = [&](TableSpec spec, int tabCount, bool acrossWidth, const QString& label) {
         TableModel sized;
         const bool built = sized.rebuild(spec);

@@ -283,9 +283,8 @@ bool writeFrameDxf(const QString& path, const TableModel& model, QString& error)
                          QString::number(s.tubeWall, 'f', 4)));
     dxf.addText(0, -2.2, 0.4, QStringLiteral("LABEL_NO_CUT"),
                 (s.doubleStringers
-                     ? QStringLiteral("Two long stringers for a shelf, each %1 in. Cross stringers %2 in. Stringer bottom %3 in off the floor.")
-                           .arg(QString::number(model.railLength(), 'f', 3), QString::number(model.crossmemberLength(), 'f', 3),
-                                QString::number(s.stringerHeight, 'f', 3))
+                     ? QStringLiteral("All tubes fit between leg faces. Cross tubes %1 in. Stringer bottom %2 in off the floor.")
+                           .arg(QString::number(model.crossmemberLength(), 'f', 3), QString::number(s.stringerHeight, 'f', 3))
                      : QStringLiteral("Center stringer is cut between the cross tubes. Cross stringers %1 in. Stringer bottom %2 in off the floor.")
                            .arg(QString::number(model.crossmemberLength(), 'f', 3), QString::number(s.stringerHeight, 'f', 3))));
     return dxf.save(path, error);
